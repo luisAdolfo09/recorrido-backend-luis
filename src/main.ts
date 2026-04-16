@@ -18,7 +18,8 @@ async function bootstrap() {
     'http://localhost:3000', 
     'http://localhost:3001',
     process.env.FRONTEND_URL, 
-    'https://recorrido-lac.vercel.app' 
+    'https://recorrido-lac.vercel.app',
+    'https://recorrido-frontend-luis-2clo7xk3f-luis-projects-ed17d2e5.vercel.app',
   ].filter(Boolean);
 
   app.enableCors({
