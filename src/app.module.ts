@@ -25,6 +25,7 @@ import { SolicitudesModule } from './solicitudes/solicitudes.module';
 
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { EventsModule } from './events/events.module';
+import { ActivacionModule } from './activacion/activacion.module';
 
 import { SupabaseModule } from './supabase/supabase.module';
 import { AuthGuard } from './supabase/auth.guard'; 
@@ -71,6 +72,7 @@ import { AuthGuard } from './supabase/auth.guard';
     SolicitudesModule,
     NotificacionesModule,
     EventsModule,
+    ActivacionModule,
   ],
   controllers: [AppController],
   providers: [

@@ -163,13 +163,14 @@ export class UsersService {
 
     await this.usersRepository.save(user);
 
-    let frontendUrl = process.env.FRONTEND_URL || 'https://recorrido-lac.vercel.app';
-    if (!frontendUrl.startsWith('http')) frontendUrl = `https://${frontendUrl}`;
-    if (frontendUrl.endsWith('/')) frontendUrl = frontendUrl.slice(0, -1);
+    // ✅ El link apunta al BACKEND (Render), NO a Vercel.
+    // Render no tiene "Deployment Protection" — el usuario siempre puede abrirlo.
+    let backendUrl = process.env.BACKEND_URL || 'https://recorrido-backend-u2dd.onrender.com';
+    if (backendUrl.endsWith('/')) backendUrl = backendUrl.slice(0, -1);
     
-    const linkActivacion = `${frontendUrl}/activar?token=${token}`;
+    const linkActivacion = `${backendUrl}/activar-cuenta?token=${token}`;
     
-    const mensaje = `Hola ${user.nombre}, bienvenido.\n\n👤 Tu Usuario: *${user.username}*\n🔐 Crea tu contraseña aquí:\n${linkActivacion}`;
+    const mensaje = `Hola ${user.nombre}, bienvenido al sistema Recorrido Escolar 🚌\n\n👤 Tu usuario: *${user.username}*\n\n🔐 Haz clic en este enlace para crear tu contraseña:\n${linkActivacion}\n\n_Este enlace es de un solo uso._`;
 
     return { link: linkActivacion, telefono: user.telefono, mensaje };
   }
