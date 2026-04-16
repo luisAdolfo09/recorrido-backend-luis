@@ -18,6 +18,7 @@ import { DiasNoLectivosService } from '../dias-no-lectivos/dias-no-lectivos.serv
 import { ConfiguracionService } from '../configuracion/configuracion.service';
 // 👇 IMPORTACIÓN NUEVA (Para Tiempo Real)
 import { EventsGateway } from '../events/events.gateway';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 @Injectable()
 export class AsistenciaService {
@@ -38,6 +39,8 @@ export class AsistenciaService {
     private readonly configuracionService: ConfiguracionService,
     // 👇 INYECCIÓN DEL GATEWAY
     private readonly eventsGateway: EventsGateway,
+    // 👇 INYECTAR SERVICIO DE NOTIFICACIONES
+    private readonly notificacionesService: NotificacionesService,
   ) {}
 
   // --- HELPERS PRIVADOS (Sin cambios) ---
@@ -186,6 +189,27 @@ export class AsistenciaService {
     );
 
     const resultado = await this.asistenciaRepository.save(registros);
+
+    // ⚡ ENVIAR NOTIFICACIONES DE AUSENCIA ⚡
+    // Cargamos los datos de los alumnos incluyendo al tutor
+    const alumnosIds = loteDto.registros.filter(r => r.estado === 'ausente').map(r => r.alumnoId);
+    
+    if (alumnosIds.length > 0) {
+      const alumnosAusentes = await this.alumnoRepository.createQueryBuilder('alumno')
+        .where('alumno.id IN (:...ids)', { ids: alumnosIds })
+        .getMany();
+
+      for (const alumno of alumnosAusentes) {
+        if (alumno.tutorUserId) {
+          await this.notificacionesService.notificarUsuario(
+            alumno.tutorUserId,
+            '⚠️ Inasistencia Registrada',
+            `El alumno ${alumno.nombre} ha sido marcado como ausente el día de hoy (${fechaString}).`,
+            'asistencia'
+          );
+        }
+      }
+    }
 
     // ⚡ EVENTO EN TIEMPO REAL ⚡
     // Esto activa el "Monitor de Ruta" y las notificaciones a los padres.

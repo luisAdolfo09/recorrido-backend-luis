@@ -193,7 +193,7 @@ export class PagosService {
       try {
           const admins = await this.usersRepository.find({ where: { rol: 'propietario' } });
           for (const admin of admins) {
-              await this.notificacionesService.crear(
+              await this.notificacionesService.notificarUsuario(
                   admin.id,
                   titulo,
                   mensaje,
@@ -204,4 +204,131 @@ export class PagosService {
           console.error("Error enviando notificación:", e);
       }
   }
-}
+
+  // --- AUTOMATIZACIÓN DE RECORDATORIOS (Cron Job Casero) ---
+  
+  onModuleInit() {
+    // Cuando el servidor arranca, configuramos el revisor
+    // Esperamos 10 segundos para asegurarnos que la BD está lista, luego revisamos
+    setTimeout(() => this.revisarPagosYNotificar(), 1000 * 10);
+    
+    // Luego configuramos un intervalo para revisar cada 12 horas
+    setInterval(() => this.revisarPagosYNotificar(), 1000 * 60 * 60 * 12);
+  }
+
+  // Variable de control en memoria para no spamear si Render reinicia el servidor
+  private ultimaRevision: string | null = null;
+
+  async revisarPagosYNotificar() {
+    try {
+      const hoy = new Date();
+      // Configurarlo a la zona horaria de Nicaragua
+      const formatoNica = new Intl.DateTimeFormat('es-NI', { timeZone: 'America/Managua' });
+      const fechaNicaStr = formatoNica.format(hoy); // "DD/MM/YYYY"
+      
+      // Solo notificar una vez por día (para no saturar en re-deploys o cold starts)
+      if (this.ultimaRevision === fechaNicaStr) {
+        return;
+      }
+
+      console.log(`[Pagos Cron] Iniciando revisión automática de pagos para el día ${fechaNicaStr}`);
+
+      const ANIO_ESCOLAR = hoy.getFullYear().toString();
+      const MESES_REGULARES = [
+        "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre"
+      ];
+
+      const mesActualJS = hoy.getMonth(); // 0 = Ene, 1 = Feb, etc.
+      const diaActual = hoy.getDate();
+
+      // Solo evaluamos pagos regulares de Feb a Nov
+      if (mesActualJS < 1 || mesActualJS > 10) {
+          this.ultimaRevision = fechaNicaStr;
+          return;
+      }
+
+      // Obtener todos los alumnos activos y sus tutores
+      const alumnos = await this.alumnosRepository.createQueryBuilder('alumno')
+        .leftJoinAndSelect('alumno.tutorUser', 'tutorUser')
+        .where('alumno.activo = :activo', { activo: true })
+        .getMany();
+
+      // Recorrer los alumnos para calcular su estado
+      for (const alumno of alumnos) {
+        if (!alumno.tutorUserId) continue; // Si no tiene tutor, no hay a quién notificar
+
+        const precio = Number(alumno.precio) || 0;
+        if (precio <= 0) continue; // No paga
+
+        // Traer pagos del alumno
+        const pagosAlumno = await this.pagosRepository.find({
+            where: { alumnoId: alumno.id }
+        });
+
+        const pagosPorMes = new Map<string, number>();
+        pagosAlumno.forEach(p => {
+            if (p.mes.includes(ANIO_ESCOLAR)) {
+                pagosPorMes.set(p.mes, (pagosPorMes.get(p.mes) || 0) + Number(p.monto));
+            }
+        });
+
+        // Buscar el primer mes regular que debe
+        let proximoMesADeber = "AL DIA";
+        for (let i = 0; i < MESES_REGULARES.length; i++) {
+            const mesNombre = `${MESES_REGULARES[i]} ${ANIO_ESCOLAR}`;
+            if ((pagosPorMes.get(mesNombre) || 0) < (precio - 0.1)) { 
+                proximoMesADeber = mesNombre;
+                break;
+            }
+        }
+
+        if (proximoMesADeber !== "AL DIA") {
+            const mesQueDebeStr = proximoMesADeber.split(' ')[0]; // Ej: "Febrero"
+            const idxMesQueDebe = MESES_REGULARES.indexOf(mesQueDebeStr);
+            const mesActualEvaluado = mesActualJS - 1; // Ajuste (1:Feb -> idx 0 en array)
+
+            if (idxMesQueDebe < mesActualEvaluado) {
+                // 🔴 MORA: Debe un mes anterior al actual
+                if (diaActual % 5 === 0) { // Notificar cada 5 días para no spamearlo a diario
+                    await this.notificacionesService.notificarUsuario(
+                        alumno.tutorUserId,
+                        '⚠️ Aviso de Mora',
+                        `Estimado tutor, el alumno ${alumno.nombre} tiene pendiente el pago de ${proximoMesADeber}. Por favor póngase al día.`,
+                        'pago'
+                    );
+                }
+            } else if (idxMesQueDebe === mesActualEvaluado) {
+                // 🟡 MES ACTUAL: Puede ser próximo a pagar o mora reciente
+                if (diaActual >= 1 && diaActual <= 5) { // Del 1 al 5 es "Próximo a Pagar"
+                   // Avisar días 1, 3 y 5
+                   if (diaActual === 1 || diaActual === 3 || diaActual === 5) {
+                        await this.notificacionesService.notificarUsuario(
+                            alumno.tutorUserId,
+                            '🗓️ Pago Próximo a Vencer',
+                            `Le recordamos que el pago correspondiente a ${proximoMesADeber} para ${alumno.nombre} vence pronto.`,
+                            'pago'
+                        );
+                   }
+                } else if (diaActual >= 6) { // Del 6 en adelante ya es mora
+                    // Avisar días 6, 11, 16, etc.
+                   if ((diaActual - 1) % 5 === 0) {
+                        await this.notificacionesService.notificarUsuario(
+                            alumno.tutorUserId,
+                            '⚠️ Mensualidad Vencida',
+                            `Estimado tutor, el pago de ${proximoMesADeber} para ${alumno.nombre} se encuentra vencido. Evite suspensión de servicio.`,
+                            'pago'
+                        );
+                   }
+                }
+            }
+        }
+      }
+
+      this.ultimaRevision = fechaNicaStr;
+      console.log(`[Pagos Cron] Revisión finalizada.`);
+    } catch (error) {
+      console.error("[Pagos Cron] Error al revisar notificaciones:", error);
+    }
+  }
+}
