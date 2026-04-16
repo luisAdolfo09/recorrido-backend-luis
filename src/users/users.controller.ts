@@ -41,6 +41,13 @@ export class UsersController {
     return this.usersService.solicitarResetPassword(body.identifier);
   }
 
+  // 5. VALIDAR TOKEN (Para mostrar info del usuario en la página /activar)
+  @Public()
+  @Get('token-info/:token')
+  validarToken(@Param('token') token: string) {
+    return this.usersService.validarToken(token);
+  }
+
   // ❌ LA RUTA 'SEED' HA SIDO ELIMINADA POR SEGURIDAD ❌
   // Si necesitas usarla de emergencia, descoméntala temporalmente.
   /*

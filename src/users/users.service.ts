@@ -135,6 +135,17 @@ export class UsersService {
     return { message: "Si los datos coinciden con un usuario, tu administrador podrá enviarte un nuevo enlace a través de WhatsApp." };
   }
 
+  // --- VALIDAR TOKEN (Solo para mostrar info en frontend, sin activar) ---
+  async validarToken(token: string) {
+    const user = await this.usersRepository.createQueryBuilder("user")
+      .where("user.invitationToken = :token", { token })
+      .addSelect("user.invitationToken")
+      .getOne();
+
+    if (!user) return { valido: false };
+    return { valido: true, nombre: user.nombre, username: user.username };
+  }
+
   // --- GENERAR INVITACIÓN (Link de WhatsApp) ---
   async generarTokenInvitacion(id: string) {
     const user = await this.usersRepository.findOneBy({ id });
