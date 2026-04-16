@@ -161,22 +161,27 @@ export class UsersService {
     user.invitationToken = null as any; // Limpiar tokens anteriores
     await this.usersRepository.save(user);
 
-    // URL del login (Vercel — no necesita token, no hay Vercel Protection en /login)
-    const frontendUrl = (process.env.FRONTEND_URL || 'https://recorrido-lac.vercel.app').replace(/\/$/, '');
+    // URL estable del backend que redirige al login del frontend.
+    // ✅ VENTAJA: Esta URL nunca cambia, bypasea Vercel Protection.
+    // Si el frontend cambia de dominio, solo se actualiza FRONTEND_URL en Render.
+    const backendUrl = (process.env.BACKEND_URL || 'https://recorrido-backend-u2dd.onrender.com').replace(/\/$/, '');
+    const loginUrl = `${backendUrl}/entrar`;
 
     const mensaje = 
       `Hola ${user.nombre}! 👋\n\n` +
       `Fuiste invitado al sistema *Recorrido Escolar* 🚌\n\n` +
-      `Ingresa aquí: ${frontendUrl}/login\n\n` +
-      `👤 *Usuario:* ${user.username}\n` +
-      `🔑 *Contraseña temporal:* ${contrasenaTemp}\n\n` +
-      `_Al entrar por primera vez, el sistema te pedirá crear una contraseña personalizada._`;
+      `Para acceder sigue estos pasos:\n\n` +
+      `1️⃣ Abre este enlace: ${loginUrl}\n` +
+      `2️⃣ Ingresa tu usuario y contraseña temporal:\n\n` +
+      `   👤 *Usuario:* ${user.username}\n` +
+      `   🔑 *Contraseña temporal:* ${contrasenaTemp}\n\n` +
+      `_Al entrar por primera vez, el sistema te pedirá crear una contraseña personal._`;
 
     return {
       mensaje,
       telefono: user.telefono,
       username: user.username,
-      contrasenaTemp, // Para que el admin lo vea en pantalla si hace falta
+      contrasenaTemp,
     };
   }
 
