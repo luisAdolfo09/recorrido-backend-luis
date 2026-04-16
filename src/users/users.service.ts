@@ -21,12 +21,11 @@ export class UsersService {
     return this.usersRepository.findOneBy({ id });
   }
 
-  // --- ACTUALIZAR USUARIO (Para editar Tutor/Personal) ---
+  // --- ACTUALIZAR USUARIO ---
   async update(id: string, changes: Partial<User>) {
     const user = await this.findOne(id);
     if (!user) throw new NotFoundException("Usuario no encontrado");
 
-    // Si cambia el teléfono, verificamos que no esté repetido en otro usuario
     if (changes.telefono && changes.telefono !== user.telefono) {
         const existe = await this.usersRepository.findOneBy({ telefono: changes.telefono });
         if (existe) throw new BadRequestException("Ese teléfono ya está en uso por otro usuario.");
@@ -37,6 +36,7 @@ export class UsersService {
   }
 
   // --- LOOKUP (Paso 1 del Login) ---
+  // ✅ Ahora también devuelve estatus para que el frontend sepa si redirigir a primer-acceso
   async lookupUser(identifier: string) {
     const user = await this.usersRepository.findOne({
         where: [
@@ -49,40 +49,36 @@ export class UsersService {
     
     return { 
         email: user.email, 
-        rol: user.rol 
+        rol: user.rol,
+        estatus: user.estatus,   // ← NUEVO: necesario para detectar primer acceso
     };
   }
 
-  // --- CREAR USUARIO (Soporta creación desde Alumnos y Personal) ---
+  // --- CREAR USUARIO ---
   async create(datos: Partial<User>) {
     try {
       const telefonoLimpio = datos.telefono?.trim();
       if (!telefonoLimpio) throw new BadRequestException("El teléfono es obligatorio.");
 
-      // Verificamos si ya existe (aunque PersonalService ya lo valida, es doble seguridad)
       const existe = await this.usersRepository.findOneBy({ telefono: telefonoLimpio });
-      if (existe) {
-          // Si ya existe, retornamos el existente para no fallar
-          return existe; 
-      }
+      if (existe) return existe;
 
       let usernameFinal = datos.username;
       if (!usernameFinal && datos.nombre) {
-        // Generar username base: juan.perez + 4 digitos
         const base = datos.nombre.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
         const random = Math.floor(1000 + Math.random() * 9000);
         usernameFinal = `${base}${random}`;
       }
 
-      const emailFantasma = `${usernameFinal}@recorrido.app`; 
-      const passwordTemporal = `Temp${Math.random().toString(36).slice(-8)}`; 
+      const emailFantasma = `${usernameFinal}@recorrido.app`;
+      // La contraseña inicial no importa — se sobreescribirá en generarAccesoTemporal
+      const passwordInicial = `Init${crypto.randomUUID().slice(0, 8)}`;
       let authUserId: string = crypto.randomUUID(); 
       
-      // 1. Crear en Supabase Auth
       try {
           const { data: authUser } = await this.supabaseService.admin.createUser({
             email: emailFantasma,
-            password: passwordTemporal,
+            password: passwordInicial,
             email_confirm: true,
             user_metadata: { nombre: datos.nombre, rol: datos.rol }
           });
@@ -91,9 +87,8 @@ export class UsersService {
           console.error("Supabase create warning:", e.message); 
       }
 
-      // 2. Guardar en Base de Datos Local
       const nuevoUsuario = this.usersRepository.create({
-        ...datos, // Aquí entra vehiculoId si viene del PersonalService
+        ...datos,
         id: authUserId, 
         username: usernameFinal,
         telefono: telefonoLimpio,
@@ -101,7 +96,7 @@ export class UsersService {
         rol: datos.rol || 'tutor',
         estatus: UserStatus.INVITADO, 
         contrasena: undefined, 
-        intentosFallidos: 0, // Inicializamos contador
+        intentosFallidos: 0,
       });
 
       return await this.usersRepository.save(nuevoUsuario);
@@ -113,81 +108,128 @@ export class UsersService {
     }
   }
 
-  // --- SOLICITAR RESET DE CONTRASEÑA (Para el usuario final) ---
-  async solicitarResetPassword(identifier: string) {
-    const user = await this.usersRepository.findOne({
-        where: [
-            { username: identifier },
-            { telefono: identifier }
-        ]
-    });
+  // =========================================================
+  // ✅ NUEVO FLUJO PROFESIONAL: CONTRASEÑA TEMPORAL
+  // Sin links de activación. Sin dependencia de browsers.
+  // Mismo patrón que usan bancos y sistemas empresariales.
+  // =========================================================
 
-    if (!user) {
-        // Retornamos un mensaje de éxito falso por seguridad (evita enumeración de usuarios)
-        return { message: "Si los datos coinciden con un usuario, tu administrador podrá enviarte un nuevo enlace a través de WhatsApp." };
+  /**
+   * Genera una contraseña temporal para el usuario y la configura en Supabase Auth.
+   * El admin la envía por WhatsApp junto con el username.
+   * Al entrar con ella, el sistema detecta estatus INVITADO → redirige a /primer-acceso.
+   */
+  async generarAccesoTemporal(id: string) {
+    const user = await this.usersRepository.findOneBy({ id });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    // Asegurar username
+    if (!user.username) {
+       const base = (user.nombre || 'usuario').trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
+       user.username = `${base}${Math.floor(1000 + Math.random() * 9000)}`;
     }
 
-    // Generamos el token y lo guardamos
-    const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    user.invitationToken = token;
+    // Contraseña temporal: formato fácil de dictar por teléfono o leer en WhatsApp
+    // Ej: "Casa5812" — fácil de tipear en móvil
+    const palabras = ['Acceso', 'Clave', 'Entra', 'Casa', 'Ruta', 'Bus'];
+    const palabra = palabras[Math.floor(Math.random() * palabras.length)];
+    const digitos = Math.floor(1000 + Math.random() * 9000);
+    const contrasenaTemp = `${palabra}${digitos}`;
+
+    // Actualizar contraseña en Supabase Auth
+    try {
+      const { error } = await this.supabaseService.admin.updateUserById(user.id, {
+        password: contrasenaTemp,
+      });
+      if (error) {
+        // Si el usuario no existe en Auth, intentar crearlo
+        console.warn(`User ${user.id} not in Supabase Auth, trying to create...`);
+        await this.supabaseService.admin.createUser({
+          email: user.email,
+          password: contrasenaTemp,
+          email_confirm: true,
+          user_metadata: { nombre: user.nombre, rol: user.rol }
+        });
+      }
+    } catch (e: any) {
+      console.error('Error configurando Supabase Auth:', e.message);
+      throw new BadRequestException('No se pudo configurar el acceso. Verifica la conexión con Supabase.');
+    }
+
+    // Marcar como INVITADO (así login detecta primer acceso y redirige a /primer-acceso)
+    user.estatus = UserStatus.INVITADO;
+    user.invitationToken = null as any; // Limpiar tokens anteriores
     await this.usersRepository.save(user);
 
-    return { message: "Si los datos coinciden con un usuario, tu administrador podrá enviarte un nuevo enlace a través de WhatsApp." };
+    // URL del login (Vercel — no necesita token, no hay Vercel Protection en /login)
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://recorrido-lac.vercel.app').replace(/\/$/, '');
+
+    const mensaje = 
+      `Hola ${user.nombre}! 👋\n\n` +
+      `Fuiste invitado al sistema *Recorrido Escolar* 🚌\n\n` +
+      `Ingresa aquí: ${frontendUrl}/login\n\n` +
+      `👤 *Usuario:* ${user.username}\n` +
+      `🔑 *Contraseña temporal:* ${contrasenaTemp}\n\n` +
+      `_Al entrar por primera vez, el sistema te pedirá crear una contraseña personalizada._`;
+
+    return {
+      mensaje,
+      telefono: user.telefono,
+      username: user.username,
+      contrasenaTemp, // Para que el admin lo vea en pantalla si hace falta
+    };
   }
 
-  // --- VALIDAR TOKEN (Solo para mostrar info en frontend, sin activar) ---
-  async validarToken(token: string) {
+  /**
+   * El usuario ya entró con la contraseña temporal.
+   * Ahora establece su contraseña definitiva → estatus pasa a ACTIVO.
+   */
+  async completarPrimerAcceso(userId: string, nuevaPassword: string) {
+    const user = await this.usersRepository.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException('Usuario no encontrado.');
+
+    const { error } = await this.supabaseService.admin.updateUserById(userId, {
+      password: nuevaPassword,
+    });
+    if (error) throw new BadRequestException('No se pudo actualizar la contraseña. Intenta de nuevo.');
+
+    user.estatus = UserStatus.ACTIVO;
+    user.intentosFallidos = 0;
+    user.bloqueadoHasta = null as any;
+    return await this.usersRepository.save(user);
+  }
+
+  // --- ACTIVAR CUENTA POR TOKEN (compatibilidad con links viejos) ---
+  async activarCuenta(token: string, contrasena: string) {
     const user = await this.usersRepository.createQueryBuilder("user")
       .where("user.invitationToken = :token", { token })
       .addSelect("user.invitationToken")
       .getOne();
-
-    if (!user) return { valido: false };
-    return { valido: true, nombre: user.nombre, username: user.username };
-  }
-
-  // --- GENERAR INVITACIÓN (Link de WhatsApp) ---
-  async generarTokenInvitacion(id: string) {
-    const user = await this.usersRepository.findOneBy({ id });
-    if (!user) throw new NotFoundException('Usuario no encontrado');
-
-    const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    user.invitationToken = token;
-    
-    // Asegurar username si falta
-    if (!user.username) {
-       const nombreBase = user.nombre ? user.nombre : 'usuario';
-       const base = nombreBase.trim().toLowerCase().replace(/\s+/g, '.');
-       user.username = `${base}${Math.floor(1000 + Math.random() * 9000)}`;
-    }
-
-    await this.usersRepository.save(user);
-
-    // ✅ El link apunta al BACKEND (Render), NO a Vercel.
-    // Render no tiene "Deployment Protection" — el usuario siempre puede abrirlo.
-    let backendUrl = process.env.BACKEND_URL || 'https://recorrido-backend-u2dd.onrender.com';
-    if (backendUrl.endsWith('/')) backendUrl = backendUrl.slice(0, -1);
-    
-    const linkActivacion = `${backendUrl}/activar-cuenta?token=${token}`;
-    
-    const mensaje = `Hola ${user.nombre}, bienvenido al sistema Recorrido Escolar 🚌\n\n👤 Tu usuario: *${user.username}*\n\n🔐 Haz clic en este enlace para crear tu contraseña:\n${linkActivacion}\n\n_Este enlace es de un solo uso._`;
-
-    return { link: linkActivacion, telefono: user.telefono, mensaje };
-  }
-
-  // --- ACTIVAR CUENTA (Establecer Password) ---
-  async activarCuenta(token: string, contrasena: string) {
-    const user = await this.usersRepository.findOneBy({ invitationToken: token });
     if (!user) throw new NotFoundException("Link inválido o expirado.");
 
     try {
-        await this.supabaseService.admin.updateUserById(user.id, { password: contrasena });
-    } catch(e) { console.error("Error al sincronizar password con Supabase"); }
+      await this.supabaseService.admin.updateUserById(user.id, { password: contrasena });
+    } catch(e) { console.error("Error sincronizando password con Supabase"); }
 
     user.estatus = UserStatus.ACTIVO;
-    user.invitationToken = null as any; 
-
+    user.invitationToken = null as any;
     return await this.usersRepository.save(user);
+  }
+
+  // --- SOLICITAR RESET (usuario final pide reset a través de la app) ---
+  async solicitarResetPassword(identifier: string) {
+    // Respuesta siempre igual por seguridad (evita enumeración)
+    await this.usersRepository.findOne({
+        where: [{ username: identifier }, { telefono: identifier }]
+    }).then(user => {
+      if (user) {
+        // Simplemente marcamos como INVITADO para que el admin regenere acceso
+        user.estatus = UserStatus.INVITADO;
+        this.usersRepository.save(user);
+      }
+    }).catch(() => {});
+
+    return { message: "Si los datos coinciden, tu administrador podrá enviarte un nuevo acceso por WhatsApp." };
   }
 
   // --- LOGIN BLINDADO (PROTECCIÓN FUERZA BRUTA) ---
@@ -200,45 +242,33 @@ export class UsersService {
 
     const user = await query.getOne();
 
-    // 1. Validaciones básicas
     if (!user) throw new UnauthorizedException("Credenciales inválidas.");
     
-    // 2. 🔒 VERIFICAR SI ESTÁ BLOQUEADO
     if (user.bloqueadoHasta && new Date() < user.bloqueadoHasta) {
         const tiempoRestante = Math.ceil((user.bloqueadoHasta.getTime() - new Date().getTime()) / 60000);
-        throw new ForbiddenException(`Cuenta bloqueada temporalmente por seguridad. Intenta de nuevo en ${tiempoRestante} minutos.`);
+        throw new ForbiddenException(`Cuenta bloqueada. Intenta en ${tiempoRestante} minutos.`);
     }
 
     if (user.estatus !== UserStatus.ACTIVO) throw new UnauthorizedException("Cuenta no activada.");
 
-    // 3. Intentar Login
     const { data, error } = await this.supabaseService.client.auth.signInWithPassword({
         email: user.email, 
         password: contrasena
     });
 
     if (error) {
-        // 🛑 FALLO DE CONTRASEÑA: CASTIGO
         user.intentosFallidos = (user.intentosFallidos || 0) + 1;
-        
-        // Si llega a 5 intentos, BLOQUEAR 15 MINUTOS
         if (user.intentosFallidos >= 5) {
             const bloqueo = new Date();
             bloqueo.setMinutes(bloqueo.getMinutes() + 15); 
             user.bloqueadoHasta = bloqueo;
-            console.warn(`🚨 Usuario ${username} BLOQUEADO hasta ${bloqueo}`);
         }
-        
-        await this.usersRepository.save(user); // Guardamos el fallo
-        
-        console.error(`Login fallido para: ${username}. Intentos: ${user.intentosFallidos}`);
+        await this.usersRepository.save(user);
         throw new UnauthorizedException("Contraseña incorrecta.");
     }
 
-    // ✅ ÉXITO: PERDÓN (Resetear contadores)
     if (user.intentosFallidos > 0 || user.bloqueadoHasta) {
         user.intentosFallidos = 0;
-        // 👇 CORRECCIÓN: Usamos 'as any' para permitir asignar null, ya que en la entidad está definido como Date
         user.bloqueadoHasta = null as any; 
         await this.usersRepository.save(user);
     }

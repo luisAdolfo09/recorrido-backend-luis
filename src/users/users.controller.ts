@@ -7,59 +7,36 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   // =========================================================
-  // 🚨 RUTAS PÚBLICAS Y ESTÁTICAS (DEBEN IR PRIMERO)
-  // Si pones estas abajo de ':id', NestJS pensará que "login" es un ID
+  // 🚨 RUTAS PÚBLICAS (Sin Auth — van SIEMPRE PRIMERO)
   // =========================================================
 
-  // 1. LOOKUP (Necesario para tu Frontend actual)
-  // Recibe { identifier: "admin" } y devuelve { email: "...", rol: "..." }
   @Public()
   @Post('lookup')
   lookup(@Body() body: { identifier: string }) {
-    console.log('👉 PETICIÓN LOOKUP:', body);
     return this.usersService.lookupUser(body.identifier);
   }
 
-  // 2. LOGIN (Alternativa Server-Side)
   @Public()
   @Post('login')
   login(@Body() body: { username: string; contrasena: string }) {
     return this.usersService.login(body.username, body.contrasena);
   }
 
-  // 3. ACTIVAR CUENTA (Para establecer contraseña nueva)
+  // Mantener activar para compatibilidad con links viejos
   @Public()
   @Post('activar')
   activar(@Body() body: { token: string; password: string }) {
     return this.usersService.activarCuenta(body.token, body.password);
   }
 
-  // 4. SOLICITAR RESET DE CONTRASEÑA
   @Public()
   @Post('solicitar-reset')
   solicitarReset(@Body() body: { identifier: string }) {
     return this.usersService.solicitarResetPassword(body.identifier);
   }
 
-  // 5. VALIDAR TOKEN (Para mostrar info del usuario en la página /activar)
-  @Public()
-  @Get('token-info/:token')
-  validarToken(@Param('token') token: string) {
-    return this.usersService.validarToken(token);
-  }
-
-  // ❌ LA RUTA 'SEED' HA SIDO ELIMINADA POR SEGURIDAD ❌
-  // Si necesitas usarla de emergencia, descoméntala temporalmente.
-  /*
-  @Public()
-  @Get('seed')
-  crearAdminDeEmergencia() {
-    return this.usersService.createAdminSeed();
-  }
-  */
-
   // =========================================================
-  // RUTAS PROTEGIDAS O GENÉRICAS (Requieren Token)
+  // RUTAS PROTEGIDAS (Requieren Token de Supabase)
   // =========================================================
 
   @Get()
@@ -72,8 +49,14 @@ export class UsersController {
     return this.usersService.create(body);
   }
 
+  // ✅ NUEVO: Completar primer acceso (usuario ya logueado con contraseña temporal)
+  @Post('completar-primer-acceso')
+  completarPrimerAcceso(@Body() body: { userId: string; nuevaPassword: string }) {
+    return this.usersService.completarPrimerAcceso(body.userId, body.nuevaPassword);
+  }
+
   // =========================================================
-  // 🚨 AL FINAL: LAS RUTAS DINÁMICAS (:id)
+  // RUTAS DINÁMICAS (:id) — AL FINAL SIEMPRE
   // =========================================================
 
   @Get(':id')
@@ -81,14 +64,14 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
-  // 👇 ESTE ES EL QUE TE FALTA
   @Patch(':id')
   update(@Param('id') id: string, @Body() body: any) {
     return this.usersService.update(id, body);
   }
 
+  // ✅ NUEVO: Genera contraseña temporal (reemplaza el viejo endpoint de invitacion)
   @Post(':id/invitacion')
   generarInvitacion(@Param('id') id: string) {
-    return this.usersService.generarTokenInvitacion(id);
+    return this.usersService.generarAccesoTemporal(id);
   }
 }
