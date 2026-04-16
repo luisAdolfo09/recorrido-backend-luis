@@ -113,6 +113,28 @@ export class UsersService {
     }
   }
 
+  // --- SOLICITAR RESET DE CONTRASEÑA (Para el usuario final) ---
+  async solicitarResetPassword(identifier: string) {
+    const user = await this.usersRepository.findOne({
+        where: [
+            { username: identifier },
+            { telefono: identifier }
+        ]
+    });
+
+    if (!user) {
+        // Retornamos un mensaje de éxito falso por seguridad (evita enumeración de usuarios)
+        return { message: "Si los datos coinciden con un usuario, tu administrador podrá enviarte un nuevo enlace a través de WhatsApp." };
+    }
+
+    // Generamos el token y lo guardamos
+    const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    user.invitationToken = token;
+    await this.usersRepository.save(user);
+
+    return { message: "Si los datos coinciden con un usuario, tu administrador podrá enviarte un nuevo enlace a través de WhatsApp." };
+  }
+
   // --- GENERAR INVITACIÓN (Link de WhatsApp) ---
   async generarTokenInvitacion(id: string) {
     const user = await this.usersRepository.findOneBy({ id });

@@ -34,6 +34,13 @@ export class UsersController {
     return this.usersService.activarCuenta(body.token, body.password);
   }
 
+  // 4. SOLICITAR RESET DE CONTRASEÑA
+  @Public()
+  @Post('solicitar-reset')
+  solicitarReset(@Body() body: { identifier: string }) {
+    return this.usersService.solicitarResetPassword(body.identifier);
+  }
+
   // ❌ LA RUTA 'SEED' HA SIDO ELIMINADA POR SEGURIDAD ❌
   // Si necesitas usarla de emergencia, descoméntala temporalmente.
   /*
