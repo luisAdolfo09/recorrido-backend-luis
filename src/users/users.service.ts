@@ -162,7 +162,7 @@ export class UsersService {
     await this.usersRepository.save(user);
 
     // Usamos el enlace solicitado (dominio actual de Vercel)
-    const loginUrl = 'https://recorrido-frontend-luis-9lvr36ph6-luis-projects-ed17d2e5.vercel.app';
+    const loginUrl = 'https://recorrido-frontend-luis-l22g8bhc0-luis-projects-ed17d2e5.vercel.app';
 
     const mensaje = 
       `Hola ${user.nombre}! 👋\n\n` +
