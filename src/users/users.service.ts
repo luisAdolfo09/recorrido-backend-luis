@@ -161,11 +161,8 @@ export class UsersService {
     user.invitationToken = null as any; // Limpiar tokens anteriores
     await this.usersRepository.save(user);
 
-    // URL estable del backend que redirige al login del frontend.
-    // ✅ VENTAJA: Esta URL nunca cambia, bypasea Vercel Protection.
-    // Si el frontend cambia de dominio, solo se actualiza FRONTEND_URL en Render.
-    const backendUrl = (process.env.BACKEND_URL || 'https://recorrido-backend-u2dd.onrender.com').replace(/\/$/, '');
-    const loginUrl = `${backendUrl}/entrar`;
+    // Usamos el enlace solicitado (dominio actual de Vercel)
+    const loginUrl = 'https://recorrido-frontend-luis-b3nyz16ly-luis-projects-ed17d2e5.vercel.app';
 
     const mensaje = 
       `Hola ${user.nombre}! 👋\n\n` +
