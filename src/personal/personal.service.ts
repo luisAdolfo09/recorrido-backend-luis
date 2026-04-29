@@ -116,14 +116,44 @@ export class PersonalService {
       throw new NotFoundException(`Personal no encontrado`);
     }
 
+    // Mapear telefono a contacto para la entidad Personal
+    const datosActualizar: any = { ...updatePersonalDto };
+    if (datosActualizar.telefono) {
+      datosActualizar.contacto = datosActualizar.telefono;
+      delete datosActualizar.telefono;
+    }
+
     const personalActualizado = await this.personalRepository.preload({
       ...personalExistente,
-      ...updatePersonalDto,  
+      ...datosActualizar,  
     });
     
     if (!personalActualizado) throw new NotFoundException(`Error al actualizar`);
 
-    return this.personalRepository.save(personalActualizado);
+    const savedPersonal = await this.personalRepository.save(personalActualizado);
+
+    // Sincronizar cambios con el Usuario asociado (si tiene)
+    if (savedPersonal.userId && updatePersonalDto.estado !== 'eliminado') {
+      const userUpdates: any = {};
+      if (updatePersonalDto.nombre) userUpdates.nombre = updatePersonalDto.nombre;
+      if (updatePersonalDto.telefono) userUpdates.telefono = updatePersonalDto.telefono;
+      if (updatePersonalDto.puesto) userUpdates.rol = updatePersonalDto.puesto.toLowerCase() === 'chofer' ? 'chofer' : 'asistente';
+      if (updatePersonalDto.estado) userUpdates.estatus = updatePersonalDto.estado === 'activo' ? 'activo' : 'inactivo';
+
+      if (Object.keys(userUpdates).length > 0) {
+        try {
+          await this.usersService.update(savedPersonal.userId, userUpdates);
+        } catch (e: any) {
+          console.error("Warning: No se pudo sincronizar el usuario asociado:", e.message);
+          // Opcional: si el teléfono está en uso por otro usuario, podríamos lanzar un BadRequestException
+          if (e.status === 400) {
+             throw new BadRequestException("El teléfono ya está en uso por otro usuario. No se guardaron los cambios.");
+          }
+        }
+      }
+    }
+
+    return savedPersonal;
   }
 
   // --- ELIMINAR ---
@@ -131,8 +161,17 @@ export class PersonalService {
     const personal = await this.personalRepository.findOne({ where: { id } });
     if (!personal) throw new NotFoundException('Personal no encontrado');
     
-    // Borrado lógico
+    // Borrado lógico en Personal
     personal.estado = 'eliminado';
     await this.personalRepository.save(personal);
+
+    // Sincronizar: Borrado lógico en el Usuario asociado
+    if (personal.userId) {
+      try {
+        await this.usersService.update(personal.userId, { estatus: 'inactivo' as any });
+      } catch (e) {
+        console.error("Warning: No se pudo desactivar el usuario asociado");
+      }
+    }
   }
 }
