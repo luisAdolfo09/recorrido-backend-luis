@@ -4,7 +4,9 @@ import { UpdateConfiguracionDto } from './dto/update-configuracion.dto';
 import { AuthGuard } from '@nestjs/passport'; // O tu Guard de JWT
 // import { RolesGuard } from '../auth/guards/roles.guard'; // (Opcional) Si tienes guard de roles
 // import { Roles } from '../auth/decorators/roles.decorator'; // (Opcional)
+import { Roles } from '../common/roles.decorator';
 
+@Roles('propietario')
 @Controller('configuracion')
 //@UseGuards(AuthGuard('jwt')) // Proteger todas las rutas
 export class ConfiguracionController {

@@ -73,18 +73,24 @@ export class UsersService {
       const emailFantasma = `${usernameFinal}@recorrido.app`;
       // La contraseña inicial no importa — se sobreescribirá en generarAccesoTemporal
       const passwordInicial = `Init${crypto.randomUUID().slice(0, 8)}`;
-      let authUserId: string = crypto.randomUUID(); 
-      
+
+      // El id de la fila DEBE coincidir con el id de Supabase Auth (es la identidad del token).
+      // Si la creación en Auth falla, abortamos: nunca usamos un UUID local desincronizado.
+      let authUserId: string;
       try {
-          const { data: authUser } = await this.supabaseService.admin.createUser({
+          const { data: authUser, error } = await this.supabaseService.admin.createUser({
             email: emailFantasma,
             password: passwordInicial,
             email_confirm: true,
             user_metadata: { nombre: datos.nombre, rol: datos.rol }
           });
-          if (authUser?.user) authUserId = authUser.user.id;
-      } catch (e: any) { 
-          console.error("Supabase create warning:", e.message); 
+          if (error || !authUser?.user) {
+            throw new Error(error?.message || 'Supabase no devolvió el usuario creado');
+          }
+          authUserId = authUser.user.id;
+      } catch (e: any) {
+          console.error("Error creando usuario en Supabase Auth:", e.message);
+          throw new BadRequestException('No se pudo crear la cuenta de acceso. Verifica la conexión con Supabase e intenta de nuevo.');
       }
 
       const nuevoUsuario = this.usersRepository.create({
@@ -187,8 +193,19 @@ export class UsersService {
    * Ahora establece su contraseña definitiva → estatus pasa a ACTIVO.
    */
   async completarPrimerAcceso(userId: string, nuevaPassword: string) {
+    // Validación de fuerza de contraseña en el SERVIDOR (no confiar solo en el cliente)
+    if (!nuevaPassword || typeof nuevaPassword !== 'string' || nuevaPassword.length < 8) {
+      throw new BadRequestException('La contraseña debe tener al menos 8 caracteres.');
+    }
+
     const user = await this.usersRepository.findOneBy({ id: userId });
     if (!user) throw new NotFoundException('Usuario no encontrado.');
+
+    // Este flujo es exclusivo del primer acceso (estatus INVITADO). Si ya está activo,
+    // no debe usarse como un reseteo de contraseña sin verificación.
+    if (user.estatus === UserStatus.ACTIVO) {
+      throw new BadRequestException('La cuenta ya está activada. Usa el flujo de recuperación de contraseña.');
+    }
 
     const { error } = await this.supabaseService.admin.updateUserById(userId, {
       password: nuevaPassword,

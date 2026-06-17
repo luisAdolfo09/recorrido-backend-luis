@@ -2,7 +2,9 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, ParseUUIDPipe, HttpC
 import { GastosService } from './gastos.service';
 import { CreateGastoDto } from './dto/create-gasto.dto';
 import { UpdateGastoDto } from './dto/update-gasto.dto';
+import { Roles } from '../common/roles.decorator';
 
+@Roles('propietario')
 @Controller('gastos')
 export class GastosController {
   constructor(private readonly gastosService: GastosService) {}

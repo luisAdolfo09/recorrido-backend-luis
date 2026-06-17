@@ -28,7 +28,8 @@ import { EventsModule } from './events/events.module';
 import { ActivacionModule } from './activacion/activacion.module';
 
 import { SupabaseModule } from './supabase/supabase.module';
-import { AuthGuard } from './supabase/auth.guard'; 
+import { AuthGuard } from './supabase/auth.guard';
+import { User } from './users/user.entity';
 
 @Module({
   imports: [
@@ -56,6 +57,9 @@ import { AuthGuard } from './supabase/auth.guard';
       }),
     }),
     
+    // El AuthGuard global necesita el repositorio de User para leer rol/estatus desde la BD
+    TypeOrmModule.forFeature([User]),
+
     SupabaseModule,
     UsersModule,
     AlumnosModule,

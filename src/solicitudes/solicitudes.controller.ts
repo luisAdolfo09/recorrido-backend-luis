@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Body, Param, Delete, Patch } from '@nestjs/common';
 import { SolicitudesService } from './solicitudes.service';
 import { Solicitud } from './solicitud.entity';
+import { Roles } from '../common/roles.decorator';
 
+@Roles('propietario')
 @Controller('solicitudes')
 export class SolicitudesController {
   constructor(private readonly solicitudesService: SolicitudesService) {}

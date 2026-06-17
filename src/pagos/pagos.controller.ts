@@ -5,7 +5,9 @@ import { PagosService } from './pagos.service';
 import { CreatePagoDto } from './dto/create-pago.dto';
 import { UpdatePagoDto } from './dto/update-pago.dto';
 import { CreatePagoBatchDto } from './dto/create-pago-batch.dto'; // <-- 1. IMPORTAR
+import { Roles } from '../common/roles.decorator';
 
+@Roles('propietario')
 @Controller('pagos') // URL Base: /pagos
 export class PagosController {
   constructor(private readonly pagosService: PagosService) {}

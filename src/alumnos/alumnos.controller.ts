@@ -2,12 +2,14 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, Request, Query, Unau
 import { AlumnosService } from './alumnos.service';
 import { AuthGuard } from '../supabase/auth.guard';
 import { Public } from '../common/public.decorator';
+import { Roles } from '../common/roles.decorator';
 
 @Controller('alumnos')
 // Nota: Usamos la protección AuthGuard global en app.module.ts
 export class AlumnosController {
   constructor(private readonly alumnosService: AlumnosService) {}
 
+  @Roles('propietario')
   @Post()
   create(@Body() createAlumnoDto: any, @Request() req: any) {
     return this.alumnosService.create(createAlumnoDto, req.user.id);
@@ -44,11 +46,13 @@ export class AlumnosController {
     return this.alumnosService.findOne(id);
   }
 
+  @Roles('propietario')
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateAlumnoDto: any) {
     return this.alumnosService.update(id, updateAlumnoDto);
   }
 
+  @Roles('propietario')
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.alumnosService.remove(id);

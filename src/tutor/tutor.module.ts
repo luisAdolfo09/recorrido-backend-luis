@@ -11,7 +11,7 @@ import { Pago } from '../pagos/pago.entity'; // 👈 Faltaba importar la entidad
 import { UsersModule } from '../users/users.module';
 import { AlumnosModule } from '../alumnos/alumnos.module';
 import { AvisosModule } from '../avisos/avisos.module';
-import { PagosModule } from 'src/pagos/pagos.module';
+import { PagosModule } from '../pagos/pagos.module';
 
 @Module({
   imports: [
