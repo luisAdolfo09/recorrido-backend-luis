@@ -61,7 +61,15 @@ export class UsersService {
       if (!telefonoLimpio) throw new BadRequestException("El teléfono es obligatorio.");
 
       const existe = await this.usersRepository.findOneBy({ telefono: telefonoLimpio });
-      if (existe) return existe;
+      if (existe) {
+        // Si el usuario ya existe (p. ej. era tutor) pero llega con un vehículo
+        // asignado, lo guardamos para que el panel de asistencia lo encuentre.
+        if (datos.vehiculoId && existe.vehiculoId !== datos.vehiculoId) {
+          existe.vehiculoId = datos.vehiculoId;
+          await this.usersRepository.save(existe);
+        }
+        return existe;
+      }
 
       let usernameFinal = datos.username;
       if (!usernameFinal && datos.nombre) {

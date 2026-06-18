@@ -2,11 +2,12 @@ import { Module } from '@nestjs/common';
 import { AsistenciaService } from './asistencia.service';
 import { AsistenciaController } from './asistencia.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Asistencia } from './asistencia.entity'; 
+import { Asistencia } from './asistencia.entity';
 import { Alumno } from '../alumnos/alumno.entity';
 import { User } from '../users/user.entity';
 import { Vehiculo } from '../vehiculos/vehiculo.entity';
 import { Aviso } from '../avisos/aviso.entity';
+import { Personal } from '../personal/personal.entity';
 
 import { UsersModule } from '../users/users.module';
 import { AlumnosModule } from '../alumnos/alumnos.module';
@@ -19,11 +20,12 @@ import { DiasNoLectivosModule } from '../dias-no-lectivos/dias-no-lectivos.modul
   imports: [
     // Registramos las entidades que usaremos
     TypeOrmModule.forFeature([
-      Asistencia, 
-      Alumno, 
-      User,      // <--- USAMOS USER, NO PERSONAL
-      Vehiculo, 
-      Aviso
+      Asistencia,
+      Alumno,
+      User,
+      Vehiculo,
+      Aviso,
+      Personal,  // fallback: el vehículo del asistente puede estar en la nómina (personal)
     ]),
 
     UsersModule,

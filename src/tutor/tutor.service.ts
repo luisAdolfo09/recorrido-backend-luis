@@ -14,16 +14,54 @@ export class TutorService {
         @InjectRepository(Alumno) private alumnoRepository: Repository<Alumno>,
         @InjectRepository(Asistencia) private asistenciaRepository: Repository<Asistencia>,
         @InjectRepository(Aviso) private avisoRepository: Repository<Aviso>,
-        private readonly pagosService: PagosService, 
+        private readonly pagosService: PagosService,
     ) {}
+
+    /**
+     * Devuelve los hijos de un tutor. Si no encuentra ninguno por `tutorUserId`
+     * (p. ej. porque el id quedó desincronizado), intenta recuperarlos por el
+     * teléfono del tutor — que se guarda en `alumno.contacto` al crear al alumno —
+     * y repara el vínculo (`tutorUserId`) para que las siguientes consultas sean
+     * consistentes.
+     */
+    private async resolverHijos(userId: string, soloActivos: boolean): Promise<Alumno[]> {
+        const whereBase: any = { tutorUserId: userId };
+        if (soloActivos) whereBase.activo = true;
+
+        let hijos = await this.alumnoRepository.find({
+            where: whereBase,
+            relations: ['vehiculo'],
+        });
+        if (hijos.length > 0) return hijos;
+
+        const user = await this.userRepository.findOne({ where: { id: userId } });
+        if (!user?.telefono) return hijos;
+
+        const wherePorTel: any = { contacto: user.telefono };
+        if (soloActivos) wherePorTel.activo = true;
+
+        const porTelefono = await this.alumnoRepository.find({
+            where: wherePorTel,
+            relations: ['vehiculo'],
+        });
+
+        if (porTelefono.length > 0) {
+            try {
+                await this.alumnoRepository.update(
+                    porTelefono.map((h) => h.id),
+                    { tutorUserId: userId },
+                );
+            } catch {
+                // Auto-reparación best-effort; si falla, igual devolvemos los hijos.
+            }
+        }
+        return porTelefono;
+    }
 
     // 1. Resumen para el Dashboard
     async getResumen(userId: string) {
-        // Buscamos hijos y su vehículo
-        const hijos = await this.alumnoRepository.find({
-            where: { tutorUserId: userId, activo: true }, 
-            relations: ['vehiculo'], 
-        });
+        // Buscamos hijos y su vehículo (con auto-reparación de vínculo por teléfono)
+        const hijos = await this.resolverHijos(userId, true);
 
         if (hijos.length === 0) {
              // Si no tiene hijos, devolvemos estructura vacía pero válida para no romper el front
@@ -130,10 +168,8 @@ export class TutorService {
 
     // 2. Historial de asistencias
     async getAsistencias(userId: string) {
-        const hijos = await this.alumnoRepository.find({
-            where: { tutorUserId: userId },
-        });
-        
+        const hijos = await this.resolverHijos(userId, false);
+
         const historial = await Promise.all(hijos.map(async (hijo) => {
             const registros = await this.asistenciaRepository.find({
                 where: { alumnoId: hijo.id },
@@ -152,10 +188,7 @@ export class TutorService {
 
     // 3. Historial de Pagos
     async getPagos(userId: string) {
-        const hijos = await this.alumnoRepository.find({
-            where: { tutorUserId: userId },
-            select: ['id'] 
-        });
+        const hijos = await this.resolverHijos(userId, false);
 
         if (hijos.length === 0) {
             return [];

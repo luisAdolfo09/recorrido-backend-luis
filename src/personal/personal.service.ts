@@ -138,7 +138,13 @@ export class PersonalService {
       if (updatePersonalDto.nombre) userUpdates.nombre = updatePersonalDto.nombre;
       if (updatePersonalDto.telefono) userUpdates.telefono = updatePersonalDto.telefono;
       if (updatePersonalDto.puesto) userUpdates.rol = updatePersonalDto.puesto.toLowerCase() === 'chofer' ? 'chofer' : 'asistente';
-      if (updatePersonalDto.estado) userUpdates.estatus = updatePersonalDto.estado === 'activo' ? 'activo' : 'inactivo';
+      // Solo desactivamos (BLOQUEADO); nunca forzamos ACTIVO para no saltarnos el primer
+      // acceso. Antes se escribían valores 'activo'/'inactivo' inválidos para el enum.
+      if (updatePersonalDto.estado && updatePersonalDto.estado !== 'activo') {
+        userUpdates.estatus = 'BLOQUEADO';
+      }
+      // Sincronizar el vehículo asignado: el panel de asistencia lo lee desde users.vehiculoId
+      userUpdates.vehiculoId = savedPersonal.vehiculoId ?? null;
 
       if (Object.keys(userUpdates).length > 0) {
         try {

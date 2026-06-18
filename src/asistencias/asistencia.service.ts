@@ -8,9 +8,10 @@ import { Between, Repository } from 'typeorm';
 
 // Entidades
 import { Asistencia } from './asistencia.entity';
-import { User } from '../users/user.entity'; 
+import { User } from '../users/user.entity';
 import { Alumno } from '../alumnos/alumno.entity';
 import { Aviso } from '../avisos/aviso.entity';
+import { Personal } from '../personal/personal.entity';
 import { CreateLoteAsistenciaDto } from './dto/create-lote-asistencia.dto';
 
 // Servicios Inyectados
@@ -34,6 +35,9 @@ export class AsistenciaService {
     
     @InjectRepository(Aviso)
     private avisoRepository: Repository<Aviso>,
+
+    @InjectRepository(Personal)
+    private personalRepository: Repository<Personal>,
 
     private readonly diasNoLectivosService: DiasNoLectivosService,
     private readonly configuracionService: ConfiguracionService,
@@ -89,12 +93,45 @@ export class AsistenciaService {
   private async getAsistenteProfile(userId: string) {
     const user = await this.userRepository.findOne({
         where: { id: userId },
-        relations: ['vehiculo'] 
+        relations: ['vehiculo'],
     });
 
     if (!user) throw new NotFoundException('Usuario no encontrado.');
-    if (!user.vehiculo) throw new NotFoundException('No tienes vehículo asignado en tu perfil.');
-    
+
+    // Si el usuario no tiene vehículo en su perfil, lo recuperamos desde la nómina
+    // (tabla personal), donde la asignación pudo quedar guardada al editar al empleado.
+    // Si lo encontramos, lo "curamos" escribiéndolo de vuelta en el usuario para que
+    // las siguientes consultas sean consistentes.
+    if (!user.vehiculo) {
+      let personal = await this.personalRepository.findOne({
+        where: { userId, estado: 'activo' },
+        relations: ['vehiculo'],
+      });
+
+      // Fallback por teléfono, por si el userId del registro de personal quedó
+      // desincronizado en datos antiguos.
+      if (!personal?.vehiculo && user.telefono) {
+        personal = await this.personalRepository.findOne({
+          where: { contacto: user.telefono, estado: 'activo' },
+          relations: ['vehiculo'],
+        });
+      }
+
+      if (personal?.vehiculo) {
+        user.vehiculo = personal.vehiculo;
+        user.vehiculoId = personal.vehiculo.id;
+        try {
+          await this.userRepository.update(user.id, { vehiculoId: personal.vehiculo.id });
+        } catch {
+          // Auto-reparación best-effort; si falla, igual respondemos con el vehículo.
+        }
+      }
+    }
+
+    if (!user.vehiculo) {
+      throw new NotFoundException('No tienes vehículo asignado en tu perfil.');
+    }
+
     return user;
   }
 
