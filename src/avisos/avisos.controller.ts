@@ -1,12 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { AvisosService } from './avisos.service';
 import { CreateAvisoDto } from './dto/create-aviso.dto';
 import { UpdateAvisoDto } from './dto/update-aviso.dto';
-import { AuthGuard } from '../supabase/auth.guard';
 import { Roles } from '../common/roles.decorator';
 
+// La autenticación la aplica el AuthGuard GLOBAL (APP_GUARD en app.module.ts).
+// No usamos @UseGuards(AuthGuard) aquí: re-instanciaría el guard en el contexto de
+// este módulo, que no provee UserRepository, y rompería el arranque de Nest.
 @Controller('avisos')
-@UseGuards(AuthGuard)
 export class AvisosController {
   constructor(private readonly avisosService: AvisosService) {}
 
