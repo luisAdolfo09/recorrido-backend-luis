@@ -131,6 +131,7 @@ export class ReportesService {
 
     let alumnosMorosos = 0;
     let alumnosAlDia = 0;
+    let alumnosFacturables = 0; // alumnos activos con mensualidad (precio > 0)
     let deudaTotal = 0;
     let esperadoVencido = 0;
     let recaudadoVencido = 0;
@@ -138,6 +139,7 @@ export class ReportesService {
     for (const a of alumnosActivosList) {
       const precio = Number(a.precio) || 0;
       if (precio <= 0) continue; // no genera cobro
+      alumnosFacturables++;
 
       const familia = (a as any).tutorUser?.nombre || a.tutor || 'Sin Tutor';
       const pagosA = pagosPorAlumnoMes.get(a.id) || new Map<string, number>();
@@ -215,6 +217,7 @@ export class ReportesService {
         familiasMorosas: familiasMap.size,
         alumnosMorosos,
         alumnosAlDia,
+        alumnosFacturables, // activos con precio > 0; si es 0, no hay cobranza configurada
         tasaCobro,
       },
       periodo,
