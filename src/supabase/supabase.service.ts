@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 @Injectable()
-export class SupabaseService {
+export class SupabaseService implements OnModuleInit {
   private supabase: SupabaseClient;
 
   constructor(private configService: ConfigService) {
@@ -18,6 +18,32 @@ export class SupabaseService {
         },
       },
     );
+  }
+
+  // Al arrancar, garantizamos que el bucket de fotos de vehículos exista y sea
+  // PÚBLICO (la app usa getPublicUrl). Es idempotente y no rompe el arranque si falla.
+  async onModuleInit() {
+    await this.ensureBucketPublico('vehiculos');
+  }
+
+  private async ensureBucketPublico(nombre: string) {
+    try {
+      const { data: buckets, error: listError } = await this.supabase.storage.listBuckets();
+      if (listError) throw listError;
+
+      const existe = buckets?.some((b) => b.name === nombre);
+      if (!existe) {
+        const { error } = await this.supabase.storage.createBucket(nombre, { public: true });
+        if (error) throw error;
+        console.log(`[Storage] Bucket '${nombre}' creado como público.`);
+      } else {
+        const { error } = await this.supabase.storage.updateBucket(nombre, { public: true });
+        if (error) throw error;
+        console.log(`[Storage] Bucket '${nombre}' asegurado como público.`);
+      }
+    } catch (e: any) {
+      console.error(`[Storage] No se pudo asegurar el bucket '${nombre}' público:`, e?.message || e);
+    }
   }
 
   // Getter para acceder al cliente desde otros servicios
