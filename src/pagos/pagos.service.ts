@@ -61,7 +61,7 @@ export class PagosService {
       // (con margen de 0.01 para errores de flotante)
       if (Number(monto) > (saldoReal + 0.01)) {
         throw new BadRequestException( // Error 400
-          `El monto C$ ${monto} excede el saldo pendiente real de C$ ${saldoReal.toFixed(2)}`
+          `El monto C$ ${Number(monto).toFixed(2)} excede el saldo pendiente real de C$ ${saldoReal.toFixed(2)}`
         );
       }
     } else {
@@ -76,7 +76,7 @@ export class PagosService {
       // Opcional: Validar que el monto sea el completo
       if (Math.abs(Number(monto) - Number(precioMensual)) > 0.01) {
          throw new BadRequestException(
-          `El monto C$ ${monto} no coincide con la mensualidad de C$ ${precioMensual.toFixed(2)} para este mes.`
+          `El monto C$ ${Number(monto).toFixed(2)} no coincide con la mensualidad de C$ ${precioMensual.toFixed(2)} para este mes.`
         );
       }
     }
@@ -87,7 +87,7 @@ export class PagosService {
     const resultado = await this.pagosRepository.save(newPago);
 
     // 🔔 MAGIA 1: Notificar a los Propietarios
-    this.notificarAdmins('💰 Pago Recibido', `Pago de C$ ${resultado.monto} recibido de ${resultado.alumnoNombre} (${mes}).`);
+    this.notificarAdmins('💰 Pago Recibido', `Pago de C$ ${Number(resultado.monto).toFixed(2)} recibido de ${resultado.alumnoNombre} (${mes}).`);
 
     // ⚡ MAGIA 2: Actualizar Dashboard en Tiempo Real
     this.eventsGateway.emitir('nuevo-pago', resultado);
@@ -131,7 +131,7 @@ export class PagosService {
     const total = nuevosPagos.reduce((sum, p) => sum + Number(p.monto), 0);
 
     // 🔔 Notificar Batch
-    this.notificarAdmins('💰 Pago Anual/Lote', `Se registraron ${nuevosPagos.length} pagos (Total: C$ ${total}) para ${alumnoNombre}.`);
+    this.notificarAdmins('💰 Pago Anual/Lote', `Se registraron ${nuevosPagos.length} pagos (Total: C$ ${Number(total).toFixed(2)}) para ${alumnoNombre}.`);
 
     // ⚡ Evento en tiempo real
     this.eventsGateway.emitir('nuevo-pago-lote', { total, cantidad: nuevosPagos.length });
