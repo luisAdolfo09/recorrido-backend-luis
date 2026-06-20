@@ -179,14 +179,13 @@ export class UsersService {
     const loginUrl = 'https://recorrido-frontend-luis-l22g8bhc0-luis-projects-ed17d2e5.vercel.app';
 
     const mensaje = 
-      `Hola ${user.nombre}! 👋\n\n` +
-      `Fuiste invitado al sistema *Recorrido Escolar* 🚌\n\n` +
-      `Para acceder sigue estos pasos:\n\n` +
-      `1️⃣ Abre este enlace: ${loginUrl}\n` +
-      `2️⃣ Ingresa tu usuario y contraseña temporal:\n\n` +
-      `   👤 *Usuario:* ${user.username}\n` +
-      `   🔑 *Contraseña temporal:* ${contrasenaTemp}\n\n` +
-      `_Al entrar por primera vez, el sistema te pedirá crear una contraseña personal._`;
+      `¡Hola *${user.nombre}*! 👋\n\n` +
+      `Se te ha creado una cuenta en el sistema *Recorrido Escolar* 🚌\n\n` +
+      `Tus credenciales de acceso son:\n\n` +
+      `👤 Usuario: *${user.username}*\n` +
+      `🔑 Contraseña: *${contrasenaTemp}*\n\n` +
+      `📝 _Al entrar por primera vez te pedirá crear tu propia contraseña._\n\n` +
+      `▶️ Ingresa aquí:\n${loginUrl}`;
 
     return {
       mensaje,
